@@ -2,25 +2,25 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-// ================= Configurações de Rede e MQTT =================
-const char* ssid = "NOME_DO_SEU_WIFI";
-const char* password = "SENHA_DO_SEU_WIFI";
+// ================= Configurações de Rede =================
+const char* ssid = "CINGUESTS";
+const char* password = "acessocin";
 
-const char* mqtt_server = "IP_DO_SEU_BROKER_MQTT"; 
-const int mqtt_port = 1883;
+// ================= Configurações do HiveMQ Cloud =========
+const char* mqtt_server = "329132687fb349a09107e68a8fd32f5c.s1.eu.hivemq.cloud"; 
+const int mqtt_port = 8883; // Porta segura!
+const char* mqtt_user = "marcos";
+const char* mqtt_pass = "mama3CIN";
 
-// ================= Configurações dos Pinos ======================
-// No PlatformIO para NodeMCU, os pinos D1 e D2 já são reconhecidos por padrão,
-// mas se der erro, você pode usar os GPIOs originais: D1 = 5, D2 = 4
-const int trigPin = D1; 
-const int echoPin = D2; 
-
-// ================= Variáveis do Sistema =========================
-const float ALTURA_TOTAL_CM = 150.0; // Distância do sensor até o fundo
+// ================= Configurações dos Pinos ===============
+const int trigPin = 12; 
+const int echoPin = 13; 
+const float ALTURA_TOTAL_CM = 100.0; 
 unsigned long tempoAnterior = 0;
-const long intervalo = 2000; // 2 segundos
+const long intervalo = 2000; 
 
-WiFiClient espClient;
+// A GRANDE MUDANÇA: Usar WiFiClientSecure em vez de WiFiClient normal
+WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
 void setup_wifi() {
@@ -35,19 +35,16 @@ void setup_wifi() {
     delay(500);
     Serial.print(".");
   }
-
-  Serial.println("");
-  Serial.println("WiFi conectado!");
-  Serial.print("Endereço IP: ");
-  Serial.println(WiFi.localIP());
+  Serial.println("\nWiFi conectado!");
 }
 
 void reconnect() {
   while (!client.connected()) {
-    Serial.print("Tentando conexão MQTT...");
-    String clientId = "ESP8266Client-NivelAgua";
+    Serial.print("Tentando conexão segura com HiveMQ...");
+    String clientId = "ESP8266Client-" + String(random(0xffff), HEX);
     
-    if (client.connect(clientId.c_str())) {
+    // Agora enviamos o Usuário e Senha na conexão!
+    if (client.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
       Serial.println("Conectado!");
     } else {
       Serial.print("Falhou, rc=");
@@ -60,26 +57,20 @@ void reconnect() {
 
 void setup() {
   Serial.begin(115200);
-  
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
-
   setup_wifi();
+  espClient.setInsecure(); 
   client.setServer(mqtt_server, mqtt_port);
 }
 
 void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
+  if (!client.connected()) reconnect();
   client.loop();
 
   unsigned long tempoAtual = millis();
-  
   if (tempoAtual - tempoAnterior >= intervalo) {
     tempoAnterior = tempoAtual;
-
-    // --- LEITURA DO SENSOR ---
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
     digitalWrite(trigPin, HIGH);
@@ -88,25 +79,23 @@ void loop() {
 
     long duracao = pulseIn(echoPin, HIGH);
     float distancia_vazia_cm = duracao * 0.034 / 2;
-
-    // --- LÓGICA ---
     float nivel_agua_cm = ALTURA_TOTAL_CM - distancia_vazia_cm;
-
     if (nivel_agua_cm < 0) nivel_agua_cm = 0; 
     if (nivel_agua_cm > ALTURA_TOTAL_CM) nivel_agua_cm = ALTURA_TOTAL_CM; 
 
+
     float porcentagem = (nivel_agua_cm / ALTURA_TOTAL_CM) * 100.0;
 
-    // --- JSON ---
+    float volume_maximo_litros = 1000.0;
+    float volume_agua_litros = (porcentagem / 100.0) * volume_maximo_litros; 
+
     String payload = "{";
-    payload += "\"distancia_vazia_cm\": " + String(distancia_vazia_cm) + ", ";
+    payload += "\"volume_agua_litros\": " + String(volume_agua_litros, 2) + ", ";
     payload += "\"nivel_agua_cm\": " + String(nivel_agua_cm) + ", ";
-    payload += "\"porcentagem\": " + String(porcentagem) + "";
-    payload += "}";
+    payload += "\"porcentagem\": " + String(porcentagem) + "}";
 
-    Serial.print("Publicando: ");
+    client.publish("marcos/caixa/nivel", payload.c_str());
+    Serial.print("Enviado: ");
     Serial.println(payload);
-
-    client.publish("caixa/nivel", payload.c_str());
   }
 }
