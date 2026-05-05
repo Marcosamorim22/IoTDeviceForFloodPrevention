@@ -8,7 +8,7 @@ const char* password = "acessocin";
 
 // ================= Configurações do HiveMQ Cloud =========
 const char* mqtt_server = "329132687fb349a09107e68a8fd32f5c.s1.eu.hivemq.cloud"; 
-const int mqtt_port = 8883; // Porta segura!
+const int mqtt_port = 8883; // Porta segura
 const char* mqtt_user = "marcos";
 const char* mqtt_pass = "mama3CIN";
 
@@ -19,10 +19,12 @@ const float ALTURA_TOTAL_CM = 100.0;
 unsigned long tempoAnterior = 0;
 const long intervalo = 2000; 
 
-// A GRANDE MUDANÇA: Usar WiFiClientSecure em vez de WiFiClient normal
+
+// pela porta ser segura tive usar a função  WifiClientSecure para criar uma conexao criptografada
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
+// inicia o modulo wifi com senha e usuario
 void setup_wifi() {
   delay(10);
   Serial.println();
@@ -37,13 +39,14 @@ void setup_wifi() {
   }
   Serial.println("\nWiFi conectado!");
 }
-
+// caso a conexão caia irá vir pra essa função
 void reconnect() {
+  // gera um novo id sempre para uma nova conexão para evitar uma conexão fantasma
   while (!client.connected()) {
     Serial.print("Tentando conexão segura com HiveMQ...");
     String clientId = "ESP8266Client-" + String(random(0xffff), HEX);
     
-    // Agora enviamos o Usuário e Senha na conexão!
+    // tenta conectar o usuario e senha no hivemq, se nao conectar espera 5 segun dos para tentar novamente
     if (client.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
       Serial.println("Conectado!");
     } else {
@@ -60,15 +63,18 @@ void setup() {
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
   setup_wifi();
-  espClient.setInsecure(); 
+  espClient.setInsecure(); // para nao precisar de um certificado  do servidor
   client.setServer(mqtt_server, mqtt_port);
 }
 
 void loop() {
-  if (!client.connected()) reconnect();
+  if (!client.connected()){
+    reconnect();
+  }
   client.loop();
 
   unsigned long tempoAtual = millis();
+  // ler dados a cada 2 segundos
   if (tempoAtual - tempoAnterior >= intervalo) {
     tempoAnterior = tempoAtual;
     digitalWrite(trigPin, LOW);
@@ -77,24 +83,25 @@ void loop() {
     delayMicroseconds(10);
     digitalWrite(trigPin, LOW);
 
+    // calculos necessarios para saida "Distancia", "nivel da agua", "volume" e "porcentagem"
     long duracao = pulseIn(echoPin, HIGH);
     float distancia_vazia_cm = duracao * 0.034 / 2;
-    float nivel_agua_cm = ALTURA_TOTAL_CM - distancia_vazia_cm;
-    if (nivel_agua_cm < 0) nivel_agua_cm = 0; 
-    if (nivel_agua_cm > ALTURA_TOTAL_CM) nivel_agua_cm = ALTURA_TOTAL_CM; 
+    float nivel_agua = ALTURA_TOTAL_CM - distancia_vazia_cm;
+    if (nivel_agua < 0) nivel_agua = 0; 
+    if (nivel_agua > ALTURA_TOTAL_CM) nivel_agua = ALTURA_TOTAL_CM; 
 
 
-    float porcentagem = (nivel_agua_cm / ALTURA_TOTAL_CM) * 100.0;
+    float porcentagem = (nivel_agua / ALTURA_TOTAL_CM) * 100.0;
 
-    float volume_maximo_litros = 1000.0;
-    float volume_agua_litros = (porcentagem / 100.0) * volume_maximo_litros; 
+    float volume_maximo = 1000.0;
+    float volume = (porcentagem / 100.0) * volume_maximo; 
 
     String payload = "{";
-    payload += "\"volume_agua_litros\": " + String(volume_agua_litros, 2) + ", ";
-    payload += "\"nivel_agua_cm\": " + String(nivel_agua_cm) + ", ";
+    payload += "\"volume\": " + String(volume, 2) + ", ";
+    payload += "\"nivel_agua\": " + String(nivel_agua) + ", ";
     payload += "\"porcentagem\": " + String(porcentagem) + "}";
 
-    client.publish("marcos/caixa/nivel", payload.c_str());
+    client.publish("sensor/caixa/medicao", payload.c_str());
     Serial.print("Enviado: ");
     Serial.println(payload);
   }
