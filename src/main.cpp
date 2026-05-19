@@ -3,8 +3,8 @@
 #include <PubSubClient.h>
 
 // ================= Configurações de Rede =================
-const char* ssid = "CINGUESTS";
-const char* password = "acessocin";
+const char* ssid = "MVT-AnaLaura";
+const char* password = "98012704AL";
 
 // ================= Configurações do HiveMQ Cloud =========
 const char* mqtt_server = "329132687fb349a09107e68a8fd32f5c.s1.eu.hivemq.cloud"; 
