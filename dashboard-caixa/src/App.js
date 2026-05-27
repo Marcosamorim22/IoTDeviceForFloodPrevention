@@ -1,7 +1,7 @@
-import CaixaDaguaDashboard from "./CaixaDaguaDashboard";
+import FloodStreetDashboard from './FloodStreetDashboard';
 
 function App() {
-  return <CaixaDaguaDashboard />;
+  return <FloodStreetDashboard />;
 }
 
 export default App;

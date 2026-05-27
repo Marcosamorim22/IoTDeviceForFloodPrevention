@@ -22,20 +22,41 @@ const DEFAULT_CONFIG = {
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
-function levelColor(pct) {
-  if (pct < 20) return "#E24B4A";
-  if (pct < 50) return "#EF9F27";
-  return "#1D9E75";
+
+function riskConfig(pct) {
+  if (pct < 20) return { color: "#639922", label: "Seguro — via liberada",          alertBg: "#EAF3DE", alertBc: "#97C459" };
+  if (pct < 40) return { color: "#EF9F27", label: "Atenção — trafegar devagar",     alertBg: "#FAEEDA", alertBc: "#FAC775" };
+  if (pct < 65) return { color: "#D85A30", label: "Perigoso — não recomendado",     alertBg: "#FAECE7", alertBc: "#F09995" };
+  return           { color: "#E24B4A", label: "CRÍTICO — rua intransitável",        alertBg: "#FCEBEB", alertBc: "#F7C1C1" };
 }
 
-function levelLabel(pct) {
-  if (pct < 20) return "Nível crítico";
-  if (pct < 50) return "Nível baixo";
-  if (pct < 80) return "Nível normal";
-  return "Caixa cheia";
+function riskTextColor(pct) {
+  if (pct < 20) return "#3B6D11";
+  if (pct < 40) return "#BA7517";
+  if (pct < 65) return "#993C1D";
+  return "#A32D2D";
 }
 
 // ─── Subcomponentes ────────────────────────────────────────────────────────────
+
+function AlertBar({ pct }) {
+  if (pct === null || pct === undefined) return null;
+  const rc = riskConfig(pct);
+  const tc = riskTextColor(pct);
+  return (
+    <div
+      style={{
+        ...styles.alertBar,
+        background: rc.alertBg,
+        borderColor: rc.alertBc,
+        color: tc,
+      }}
+    >
+      <span style={{ fontSize: 18 }}>⚠️</span>
+      <span style={{ fontWeight: 500 }}>{rc.label}</span>
+    </div>
+  );
+}
 
 function MetricCard({ icon, label, value, unit }) {
   return (
@@ -45,7 +66,7 @@ function MetricCard({ icon, label, value, unit }) {
       </div>
       <div style={styles.metricValue}>
         {value ?? "—"}
-        {value !== null && value !== undefined && (
+        {value !== null && value !== undefined && unit && (
           <span style={styles.metricUnit}> {unit}</span>
         )}
       </div>
@@ -54,12 +75,15 @@ function MetricCard({ icon, label, value, unit }) {
 }
 
 function GaugeArc({ pct }) {
-  const radius = 60;
-  const cx = 80;
-  const cy = 80;
+  const radius = 62;
+  const cx = 90;
+  const cy = 90;
   const startAngle = 210;
   const totalAngle = 300;
-  const color = pct !== null ? levelColor(pct) : "#D3D1C7";
+
+  const rc = pct !== null ? riskConfig(pct) : null;
+  const color = rc ? rc.color : "#D3D1C7";
+  const textColor = pct !== null ? riskTextColor(pct) : "#888780";
 
   function polarToXY(angleDeg, r) {
     const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -76,12 +100,18 @@ function GaugeArc({ pct }) {
   const endAngle = startAngle + (pct !== null ? (pct / 100) * totalAngle : 0);
 
   return (
-    <svg viewBox="0 0 160 120" width="160" height="120" role="img" aria-label={`Gauge: ${pct ?? 0}%`}>
+    <svg
+      viewBox="0 0 180 140"
+      width="180"
+      height="140"
+      role="img"
+      aria-label={`Gauge: ${pct ?? 0}%`}
+    >
       <path
         d={describeArc(startAngle, startAngle + totalAngle, radius)}
         fill="none"
-        stroke="#E8E6DF"
-        strokeWidth="12"
+        stroke="#D3D1C7"
+        strokeWidth="14"
         strokeLinecap="round"
       />
       {pct !== null && pct > 0 && (
@@ -89,17 +119,26 @@ function GaugeArc({ pct }) {
           d={describeArc(startAngle, endAngle, radius)}
           fill="none"
           stroke={color}
-          strokeWidth="12"
+          strokeWidth="14"
           strokeLinecap="round"
           style={{ transition: "all 0.6s ease" }}
         />
       )}
-      <text x={cx} y={cy + 8} textAnchor="middle" fontSize="22" fontWeight="500" fill={color}>
+      <text
+        x={cx}
+        y={cy + 8}
+        textAnchor="middle"
+        fontSize="26"
+        fontWeight="600"
+        fill={color}
+      >
         {pct !== null ? `${pct.toFixed(0)}%` : "—"}
       </text>
-      <text x={cx} y={cy + 26} textAnchor="middle" fontSize="11" fill="#888780">
-        {pct !== null ? levelLabel(pct) : "Aguardando..."}
+      <text x={cx} y={cy + 24} textAnchor="middle" fontSize="11" fill={textColor}>
+        {pct !== null ? riskConfig(pct).label : "Aguardando..."}
       </text>
+      <text x="18" y="130" fontSize="9" fill="#888780">0</text>
+      <text x="147" y="130" fontSize="9" fill="#888780">100%</text>
     </svg>
   );
 }
@@ -113,10 +152,20 @@ function LogBox({ logs }) {
   return (
     <div ref={ref} style={styles.logBox}>
       {logs.length === 0 && (
-        <div style={{ color: "#888780", fontStyle: "italic" }}>Nenhuma mensagem ainda...</div>
+        <div style={{ color: "#888780", fontStyle: "italic" }}>
+          Nenhuma mensagem ainda...
+        </div>
       )}
       {logs.map((l, i) => (
-        <div key={i} style={{ color: l.color, marginBottom: 2, fontSize: 11, fontFamily: "monospace" }}>
+        <div
+          key={i}
+          style={{
+            color: l.color,
+            marginBottom: 2,
+            fontSize: 11,
+            fontFamily: "monospace",
+          }}
+        >
           [{l.time}] {l.msg}
         </div>
       ))}
@@ -125,9 +174,8 @@ function LogBox({ logs }) {
 }
 
 // ─── Componente principal ──────────────────────────────────────────────────────
-export default function CaixaDaguaDashboard() {
-  const [config, setConfig] = useState(DEFAULT_CONFIG);
-  const [connState, setConnState] = useState("disconnected"); // disconnected | connecting | connected | error
+export default function FloodStreetDashboard() {
+  const [connState, setConnState] = useState("disconnected"); 
   const [data, setData] = useState(null);
   const [history, setHistory] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -136,7 +184,9 @@ export default function CaixaDaguaDashboard() {
   const addLog = useCallback((msg, type = "info") => {
     const colors = { info: "#888780", ok: "#3B6D11", err: "#A32D2D" };
     const time = new Date().toLocaleTimeString("pt-BR");
-    setLogs((prev) => [{ msg, time, color: colors[type] }, ...prev].slice(0, 60));
+    setLogs((prev) =>
+      [{ msg, time, color: colors[type] }, ...prev].slice(0, 60)
+    );
   }, []);
 
   const disconnect = useCallback(() => {
@@ -148,21 +198,19 @@ export default function CaixaDaguaDashboard() {
   }, []);
 
   const connect = useCallback(() => {
-    // Requer mqtt.js via CDN ou instalado: npm install mqtt
-    
     if (!mqtt) {
-      addLog("Biblioteca mqtt.js não encontrada. Adicione: npm install mqtt", "err");
+      addLog("Biblioteca mqtt.js não encontrada. npm install mqtt", "err");
       return;
     }
 
-    const url = `wss://${config.broker}:${config.port}/mqtt`;
+    const url = `wss://${DEFAULT_CONFIG.broker}:${DEFAULT_CONFIG.port}/mqtt`;
     setConnState("connecting");
     addLog(`Conectando a ${url} ...`);
 
     const client = mqtt.connect(url, {
-      username: config.user,
-      password: config.pass,
-      clientId: "dashboard-" + Math.random().toString(16).slice(2, 8),
+      username: DEFAULT_CONFIG.user,
+      password: DEFAULT_CONFIG.pass,
+      clientId: "flood-dash-" + Math.random().toString(16).slice(2, 8),
       rejectUnauthorized: false,
     });
 
@@ -178,17 +226,19 @@ export default function CaixaDaguaDashboard() {
     client.on("message", (_topic, payload) => {
       try {
         const d = JSON.parse(payload.toString());
-        const pct = parseFloat(d.porcentagem);
+        const pct   = parseFloat(d.porcentagem);
         const nivel = parseFloat(d.nivel_agua);
-        const volume = parseFloat(d.volume);
-        const time = new Date().toLocaleTimeString("pt-BR");
+        const vel   = d.velocidade !== undefined ? parseFloat(d.velocidade) : null;
+        const time  = new Date().toLocaleTimeString("pt-BR");
 
-        setData({ pct, nivel, volume, time });
+        setData({ pct, nivel, vel, time });
         setHistory((prev) => {
           const next = [...prev, { time, pct: parseFloat(pct.toFixed(1)) }];
           return next.slice(-MAX_HISTORY);
         });
-        addLog(`nível: ${nivel.toFixed(1)}cm | ${pct.toFixed(1)}% | ${volume.toFixed(0)}L`);
+
+        const velTxt = vel !== null ? ` | vel: ${vel.toFixed(1)} m/s` : "";
+        addLog(`nível: ${nivel.toFixed(1)} cm | ${pct.toFixed(1)}%${velTxt}`);
       } catch {
         addLog("Payload inválido: " + payload.toString(), "err");
       }
@@ -205,14 +255,13 @@ export default function CaixaDaguaDashboard() {
     });
 
     clientRef.current = client;
-  }, [config, addLog]);
+  }, [addLog]);
 
-  const toggleConnect = () => {
-    if (connState === "connected") disconnect();
-    else connect();
-  };
-
-  useEffect(() => () => disconnect(), [disconnect]);
+  // Efeito para conectar automaticamente ao abrir a página
+  useEffect(() => {
+    connect();
+    return () => disconnect();
+  }, [connect, disconnect]);
 
   const statusColors = {
     disconnected: "#B4B2A9",
@@ -227,13 +276,17 @@ export default function CaixaDaguaDashboard() {
     error: "Erro de conexão",
   };
 
+  const chartColor = data?.pct !== undefined ? riskConfig(data.pct).color : "#1D9E75";
+
   return (
     <div style={styles.root}>
       {/* Header */}
       <div style={styles.header}>
         <div>
-          <h1 style={styles.title}>💧 Caixa d'Água</h1>
-          <p style={styles.subtitle}>Monitoramento em tempo real via MQTT</p>
+          <h1 style={styles.title}>Monitor de enchente urbana</h1>
+          <p style={styles.subtitle}>
+            Nível de água em via pública · Monitoramento MQTT em tempo real
+          </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span
@@ -246,57 +299,56 @@ export default function CaixaDaguaDashboard() {
               transition: "background 0.3s",
             }}
           />
-          <span style={{ fontSize: 13, color: "#888780" }}>{statusLabels[connState]}</span>
+          <span style={{ fontSize: 13, color: "#888780" }}>
+            {statusLabels[connState]}
+          </span>
         </div>
       </div>
 
-      {/* Conexão */}
-      <div style={styles.card}>
-        <div style={styles.cardTitle}>Configuração MQTT</div>
-        <div style={styles.formGrid}>
-          {[
-            { label: "Broker (host)", key: "broker", type: "text" },
-            { label: "Porta WSS", key: "port", type: "number" },
-            { label: "Usuário", key: "user", type: "text" },
-            { label: "Senha", key: "pass", type: "password" },
-          ].map(({ label, key, type }) => (
-            <div key={key}>
-              <div style={styles.formLabel}>{label}</div>
-              <input
-                type={type}
-                value={config[key]}
-                disabled={connState === "connected" || connState === "connecting"}
-                onChange={(e) => setConfig((c) => ({ ...c, [key]: e.target.value }))}
-                style={styles.input}
-              />
-            </div>
-          ))}
-        </div>
-        <button
-          onClick={toggleConnect}
-          disabled={connState === "connecting"}
-          style={{
-            ...styles.btn,
-            background: connState === "connected" ? "#FCEBEB" : "#EAF3DE",
-            color: connState === "connected" ? "#A32D2D" : "#3B6D11",
-            borderColor: connState === "connected" ? "#F09595" : "#97C459",
-          }}
-        >
-          {connState === "connecting" ? "Conectando..." : connState === "connected" ? "Desconectar" : "Conectar"}
-        </button>
-      </div>
+      {/* Barra de alerta */}
+      <AlertBar pct={data?.pct ?? null} />
 
       {/* Métricas */}
       <div style={styles.metricsGrid}>
-        <MetricCard icon="📏" label="Nível" value={data ? data.nivel.toFixed(1) : null} unit="cm" />
-        <MetricCard icon="📊" label="Porcentagem" value={data ? data.pct.toFixed(1) : null} unit="%" />
-        <MetricCard icon="🪣" label="Volume" value={data ? data.volume.toFixed(0) : null} unit="L" />
-        <MetricCard icon="🕐" label="Última leitura" value={data?.time} unit="" />
+        <MetricCard
+          icon="📏"
+          label="Nível"
+          value={data ? data.nivel.toFixed(1) : null}
+          unit="cm"
+        />
+        <MetricCard
+          icon="💧"
+          label="Porcentagem"
+          value={data ? data.pct.toFixed(1) : null}
+          unit="%"
+        />
+        <MetricCard
+          icon="🌊"
+          label="Velocidade"
+          value={data?.vel !== null && data?.vel !== undefined ? data.vel.toFixed(1) : null}
+          unit="m/s"
+        />
+        <MetricCard
+          icon="🕐"
+          label="Última leitura"
+          value={data?.time}
+          unit=""
+        />
       </div>
 
       {/* Gauge + Gráfico */}
       <div style={styles.vizRow}>
-        <div style={{ ...styles.card, margin: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 180 }}>
+        <div
+          style={{
+            ...styles.card,
+            margin: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            minWidth: 200,
+          }}
+        >
           <div style={styles.cardTitle}>Nível atual</div>
           <GaugeArc pct={data?.pct ?? null} />
         </div>
@@ -309,20 +361,38 @@ export default function CaixaDaguaDashboard() {
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={history} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
-                <XAxis dataKey="time" tick={{ fontSize: 10, fill: "#888780" }} interval="preserveStartEnd" />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "#888780" }} tickFormatter={(v) => v + "%"} />
+              <LineChart
+                data={history}
+                margin={{ top: 4, right: 8, bottom: 0, left: -16 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="rgba(0,0,0,0.06)"
+                />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 10, fill: "#888780" }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  domain={[0, 100]}
+                  tick={{ fontSize: 10, fill: "#888780" }}
+                  tickFormatter={(v) => v + "%"}
+                />
                 <Tooltip
                   formatter={(v) => [`${v}%`, "Nível"]}
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: "0.5px solid #D3D1C7" }}
+                  contentStyle={{
+                    fontSize: 12,
+                    borderRadius: 8,
+                    border: "0.5px solid #D3D1C7",
+                  }}
                 />
                 <Line
                   type="monotone"
                   dataKey="pct"
-                  stroke="#1D9E75"
+                  stroke={chartColor}
                   strokeWidth={2}
-                  dot={{ r: 3, fill: "#1D9E75" }}
+                  dot={{ r: 3, fill: chartColor }}
                   isAnimationActive={false}
                 />
               </LineChart>
@@ -337,11 +407,45 @@ export default function CaixaDaguaDashboard() {
         <LogBox logs={logs} />
       </div>
 
-      {/* Aviso mqtt.js */}
-      <div style={styles.notice}>
-        ⚙️ Instale a dependência: <code style={styles.code}>npm install mqtt recharts</code> — e importe{" "}
-        <code style={styles.code}>mqtt</code> conforme o bundler do seu projeto (ex:{" "}
-        <code style={styles.code}>import mqtt from "mqtt"</code>) e passe como <code style={styles.code}>window.mqtt</code> ou ajuste o hook.
+      {/* Legenda de risco */}
+      <div style={styles.legend}>
+        <div style={styles.legendTitle}>Legenda de risco</div>
+        <div style={styles.legendGrid}>
+          {[
+            { range: "0 – 19%",  label: "Seguro",     color: "#639922", bg: "#EAF3DE" },
+            { range: "20 – 39%", label: "Atenção",    color: "#BA7517", bg: "#FAEEDA" },
+            { range: "40 – 64%", label: "Perigoso",   color: "#993C1D", bg: "#FAECE7" },
+            { range: "≥ 65%",    label: "Crítico",    color: "#A32D2D", bg: "#FCEBEB" },
+          ].map((r) => (
+            <div
+              key={r.range}
+              style={{
+                background: r.bg,
+                borderRadius: 8,
+                padding: "8px 12px",
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+              }}
+            >
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: r.color,
+                  flexShrink: 0,
+                }}
+              />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 500, color: r.color }}>
+                  {r.label}
+                </div>
+                <div style={{ fontSize: 11, color: r.color }}>{r.range}</div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -362,8 +466,18 @@ const styles = {
     alignItems: "flex-start",
     marginBottom: 20,
   },
-  title: { fontSize: 22, fontWeight: 600, margin: 0 },
+  title:    { fontSize: 22, fontWeight: 600, margin: 0 },
   subtitle: { fontSize: 13, color: "#888780", margin: "4px 0 0" },
+  alertBar: {
+    borderRadius: 8,
+    padding: "10px 14px",
+    marginBottom: 14,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    border: "0.5px solid",
+    fontSize: 13,
+  },
   card: {
     background: "#fff",
     border: "0.5px solid #D3D1C7",
@@ -378,33 +492,6 @@ const styles = {
     marginBottom: 12,
     textTransform: "uppercase",
     letterSpacing: "0.05em",
-  },
-  formGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 12,
-    marginBottom: 14,
-  },
-  formLabel: { fontSize: 12, color: "#888780", marginBottom: 4 },
-  input: {
-    width: "100%",
-    padding: "7px 10px",
-    fontSize: 13,
-    border: "0.5px solid #D3D1C7",
-    borderRadius: 8,
-    outline: "none",
-    background: "#fff",
-    color: "#1a1a1a",
-    boxSizing: "border-box",
-  },
-  btn: {
-    padding: "8px 20px",
-    fontSize: 13,
-    fontWeight: 500,
-    border: "0.5px solid",
-    borderRadius: 8,
-    cursor: "pointer",
-    transition: "opacity 0.2s",
   },
   metricsGrid: {
     display: "grid",
@@ -426,7 +513,7 @@ const styles = {
     gap: 4,
   },
   metricValue: { fontSize: 22, fontWeight: 600, color: "#1a1a1a" },
-  metricUnit: { fontSize: 13, color: "#888780", fontWeight: 400 },
+  metricUnit:  { fontSize: 13, color: "#888780", fontWeight: 400 },
   vizRow: {
     display: "flex",
     gap: 16,
@@ -443,20 +530,24 @@ const styles = {
     overflowY: "auto",
     color: "#888780",
   },
-  notice: {
+  legend: {
+    background: "#fff",
+    border: "0.5px solid #D3D1C7",
+    borderRadius: 12,
+    padding: "16px 20px",
+    marginBottom: 16,
+  },
+  legendTitle: {
     fontSize: 12,
     color: "#888780",
-    background: "#F1EFE8",
-    borderRadius: 8,
-    padding: "10px 14px",
-    lineHeight: 1.6,
+    fontWeight: 500,
+    marginBottom: 12,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
   },
-  code: {
-    background: "#E8E6DF",
-    borderRadius: 4,
-    padding: "1px 5px",
-    fontFamily: "monospace",
-    fontSize: 11,
-    color: "#3B6D11",
+  legendGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(0,1fr))",
+    gap: 10,
   },
 };

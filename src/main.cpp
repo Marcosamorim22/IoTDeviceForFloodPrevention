@@ -19,8 +19,15 @@ const float ALTURA_TOTAL_CM = 100.0;
 unsigned long tempoAnterior = 0;
 const long intervalo = 2000; 
 
+// === NOVAS VARIÁVEIS PARA O CÁLCULO DE VELOCIDADE ===
+float nivelAnterior = 0.0;
+unsigned long tempoAnteriorVelocidade = 0;
+float velocidade = 0.0; // Armazena a velocidade em cm/minuto
+const long intervaloVelocidade = 10000; // Recalcula a velocidade a cada 60 segundos
+bool primeiraLeitura = true; // Evita um pico falso no primeiro cálculo
 
-// pela porta ser segura tive usar a função  WifiClientSecure para criar uma conexao criptografada
+
+// pela porta ser segura tive usar a função WifiClientSecure para criar uma conexao criptografada
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
@@ -39,6 +46,7 @@ void setup_wifi() {
   }
   Serial.println("\nWiFi conectado!");
 }
+
 // caso a conexão caia irá vir pra essa função
 void reconnect() {
   // gera um novo id sempre para uma nova conexão para evitar uma conexão fantasma
@@ -46,7 +54,7 @@ void reconnect() {
     Serial.print("Tentando conexão segura com HiveMQ...");
     String clientId = "ESP8266Client-" + String(random(0xffff), HEX);
     
-    // tenta conectar o usuario e senha no hivemq, se nao conectar espera 5 segun dos para tentar novamente
+    // tenta conectar o usuario e senha no hivemq, se nao conectar espera 5 segundos para tentar novamente
     if (client.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
       Serial.println("Conectado!");
     } else {
@@ -63,7 +71,7 @@ void setup() {
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
   setup_wifi();
-  espClient.setInsecure(); // para nao precisar de um certificado  do servidor
+  espClient.setInsecure(); // para nao precisar de um certificado do servidor
   client.setServer(mqtt_server, mqtt_port);
 }
 
@@ -74,9 +82,11 @@ void loop() {
   client.loop();
 
   unsigned long tempoAtual = millis();
+  
   // ler dados a cada 2 segundos
   if (tempoAtual - tempoAnterior >= intervalo) {
     tempoAnterior = tempoAtual;
+    
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
     digitalWrite(trigPin, HIGH);
@@ -87,19 +97,43 @@ void loop() {
     long duracao = pulseIn(echoPin, HIGH);
     float distancia_vazia_cm = duracao * 0.034 / 2;
     float nivel_agua = ALTURA_TOTAL_CM - distancia_vazia_cm;
+    
     if (nivel_agua < 0) nivel_agua = 0; 
     if (nivel_agua > ALTURA_TOTAL_CM) nivel_agua = ALTURA_TOTAL_CM; 
 
+    // ─── LÓGICA DA VELOCIDADE DE SUBIDA ───────────────────────────────────
+    if (primeiraLeitura) {
+      nivelAnterior = nivel_agua;
+      tempoAnteriorVelocidade = tempoAtual;
+      primeiraLeitura = false;
+    }
+
+    // A cada 60 segundos, atualiza o cálculo da velocidade
+    if (tempoAtual - tempoAnteriorVelocidade >= intervaloVelocidade) {
+      float deltaNivel = nivel_agua - nivelAnterior;
+      float deltaTempoMinutos = (tempoAtual - tempoAnteriorVelocidade) / 60000.0;
+
+      velocidade = deltaNivel / deltaTempoMinutos; // Resultado em cm/minuto
+
+      // Se a água estiver descendo, o valor fica negativo. 
+      // Se preferir travar em 0 para não mostrar velocidade negativa, descomente a linha abaixo:
+      // if (velocidade < 0) velocidade = 0;
+
+      nivelAnterior = nivel_agua;
+      tempoAnteriorVelocidade = tempoAtual;
+    }
+    // ──────────────────────────────────────────────────────────────────────
 
     float porcentagem = (nivel_agua / ALTURA_TOTAL_CM) * 100.0;
 
     float volume_maximo = 1000.0;
     float volume = (porcentagem / 100.0) * volume_maximo; 
 
+    // Montagem do JSON com o novo campo "velocidade"
     String payload = "{";
-    payload += "\"volume\": " + String(volume, 2) + ", ";
-    payload += "\"nivel_agua\": " + String(nivel_agua) + ", ";
-    payload += "\"porcentagem\": " + String(porcentagem) + "}";
+    payload += "\"nivel_agua\": " + String(nivel_agua, 2) + ", ";
+    payload += "\"porcentagem\": " + String(porcentagem, 2) + ", ";
+    payload += "\"velocidade\": " + String(velocidade, 2) + "}";
 
     client.publish("sensor/caixa/medicao", payload.c_str());
     Serial.print("Enviado: ");
