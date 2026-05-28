@@ -7,136 +7,122 @@ const char* ssid = "MVT-AnaLaura";
 const char* password = "98012704AL";
 
 // ================= Configurações do HiveMQ Cloud =========
-const char* mqtt_server = "329132687fb349a09107e68a8fd32f5c.s1.eu.hivemq.cloud"; 
-const int mqtt_port = 8883; // Porta segura
+const char* mqtt_server = "329132687fb349a09107e68a8fd32f5c.s1.eu.hivemq.cloud";
+const int mqtt_port = 8883;
 const char* mqtt_user = "marcos";
 const char* mqtt_pass = "mama3CIN";
 
 // ================= Configurações dos Pinos ===============
-const int trigPin = 12; 
-const int echoPin = 13; 
-const float ALTURA_TOTAL_CM = 100.0; 
+const int trigPin = 12;
+const int echoPin = 13;
+const float ALTURA_TOTAL_CM = 200.0;
+
 unsigned long tempoAnterior = 0;
-const long intervalo = 2000; 
+const long intervalo = 2000;
 
-// === NOVAS VARIÁVEIS PARA O CÁLCULO DE VELOCIDADE ===
-float nivelAnterior = 0.0;
+// ================= Velocidade ============================
+float nivelAnterior       = 0.0;
 unsigned long tempoAnteriorVelocidade = 0;
-float velocidade = 0.0; // Armazena a velocidade em cm/minuto
-const long intervaloVelocidade = 10000; // Recalcula a velocidade a cada 60 segundos
-bool primeiraLeitura = true; // Evita um pico falso no primeiro cálculo
+float velocidade          = 0.0;          // cm/min
+const long intervaloVelocidade = 5000;   // recalcula a cada 5s
+bool primeiraLeitura      = true;
 
-
-// pela porta ser segura tive usar a função WifiClientSecure para criar uma conexao criptografada
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
-// inicia o modulo wifi com senha e usuario
+// ===================== WiFi ==============================
 void setup_wifi() {
   delay(10);
   Serial.println();
   Serial.print("Conectando na rede: ");
   Serial.println(ssid);
-
   WiFi.begin(ssid, password);
-
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("\nWiFi conectado!");
+  Serial.println("\nWiFi conectado! IP: " + WiFi.localIP().toString());
 }
 
-// caso a conexão caia irá vir pra essa função
+// ===================== MQTT ==============================
 void reconnect() {
-  // gera um novo id sempre para uma nova conexão para evitar uma conexão fantasma
   while (!client.connected()) {
-    Serial.print("Tentando conexão segura com HiveMQ...");
+    Serial.print("Tentando conexão MQTT...");
     String clientId = "ESP8266Client-" + String(random(0xffff), HEX);
-    
-    // tenta conectar o usuario e senha no hivemq, se nao conectar espera 5 segundos para tentar novamente
     if (client.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
       Serial.println("Conectado!");
     } else {
       Serial.print("Falhou, rc=");
       Serial.print(client.state());
-      Serial.println(" Tentando de novo em 5s.");
+      Serial.println(" — tentando novamente em 5s.");
       delay(5000);
     }
   }
 }
 
+// ==================== Ultrassom ==========================
+float lerDistanciaCM() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  long duracao = pulseIn(echoPin, HIGH, 30000);
+  if (duracao == 0) return -1;
+  return duracao * 0.034 / 2;
+}
+
+// ===================== Setup =============================
 void setup() {
   Serial.begin(115200);
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
   setup_wifi();
-  espClient.setInsecure(); // para nao precisar de um certificado do servidor
+  espClient.setInsecure();
   client.setServer(mqtt_server, mqtt_port);
 }
 
+// ===================== Loop ==============================
 void loop() {
-  if (!client.connected()){
-    reconnect();
-  }
+  if (!client.connected()) reconnect();
   client.loop();
 
   unsigned long tempoAtual = millis();
-  
-  // ler dados a cada 2 segundos
   if (tempoAtual - tempoAnterior >= intervalo) {
     tempoAnterior = tempoAtual;
-    
-    digitalWrite(trigPin, LOW);
-    delayMicroseconds(2);
-    digitalWrite(trigPin, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(trigPin, LOW);
 
-    // calculos necessarios para saida "Distancia", "nivel da agua", "volume" e "porcentagem"
-    long duracao = pulseIn(echoPin, HIGH);
-    float distancia_vazia_cm = duracao * 0.034 / 2;
-    float nivel_agua = ALTURA_TOTAL_CM - distancia_vazia_cm;
-    
-    if (nivel_agua < 0) nivel_agua = 0; 
-    if (nivel_agua > ALTURA_TOTAL_CM) nivel_agua = ALTURA_TOTAL_CM; 
-
-    // ─── LÓGICA DA VELOCIDADE DE SUBIDA ───────────────────────────────────
-    if (primeiraLeitura) {
-      nivelAnterior = nivel_agua;
-      tempoAnteriorVelocidade = tempoAtual;
-      primeiraLeitura = false;
+    float distancia_cm = lerDistanciaCM();
+    if (distancia_cm < 0) {
+      Serial.println("Erro: leitura inválida do sensor.");
+      return;
     }
 
-    // A cada 60 segundos, atualiza o cálculo da velocidade
-    if (tempoAtual - tempoAnteriorVelocidade >= intervaloVelocidade) {
-      float deltaNivel = nivel_agua - nivelAnterior;
-      float deltaTempoMinutos = (tempoAtual - tempoAnteriorVelocidade) / 60000.0;
-
-      velocidade = deltaNivel / deltaTempoMinutos; // Resultado em cm/minuto
-
-      // Se a água estiver descendo, o valor fica negativo. 
-      // Se preferir travar em 0 para não mostrar velocidade negativa, descomente a linha abaixo:
-      // if (velocidade < 0) velocidade = 0;
-
-      nivelAnterior = nivel_agua;
-      tempoAnteriorVelocidade = tempoAtual;
-    }
-    // ──────────────────────────────────────────────────────────────────────
-
+    float nivel_agua = constrain(ALTURA_TOTAL_CM - distancia_cm, 0, ALTURA_TOTAL_CM);
     float porcentagem = (nivel_agua / ALTURA_TOTAL_CM) * 100.0;
 
-    float volume_maximo = 1000.0;
-    float volume = (porcentagem / 100.0) * volume_maximo; 
+    // ── Cálculo da velocidade ─────────────────────────────
+    if (primeiraLeitura) {
+      nivelAnterior             = nivel_agua;
+      tempoAnteriorVelocidade   = tempoAtual;
+      primeiraLeitura           = false;
+    } else if (tempoAtual - tempoAnteriorVelocidade >= intervaloVelocidade) {
+      float deltaMinutos = (tempoAtual - tempoAnteriorVelocidade) / 60000.0;
+      velocidade                = (nivel_agua - nivelAnterior) / deltaMinutos;
+      nivelAnterior             = nivel_agua;
+      tempoAnteriorVelocidade   = tempoAtual;
+    }
+    // ─────────────────────────────────────────────────────
 
-    // Montagem do JSON com o novo campo "velocidade"
     String payload = "{";
-    payload += "\"nivel_agua\": " + String(nivel_agua, 2) + ", ";
-    payload += "\"porcentagem\": " + String(porcentagem, 2) + ", ";
-    payload += "\"velocidade\": " + String(velocidade, 2) + "}";
+    payload += "\"nivel_agua\": "  + String(nivel_agua, 2)  + ", ";
+    payload += "\"porcentagem\": " + String(porcentagem, 1) + ", ";
+    payload += "\"velocidade\": "  + String(velocidade, 2)  + "}";
 
-    client.publish("sensor/caixa/medicao", payload.c_str());
-    Serial.print("Enviado: ");
-    Serial.println(payload);
+    if (client.publish("sensor/caixa/medicao", payload.c_str())) {
+      Serial.println("Enviado: " + payload);
+    } else {
+      Serial.println("Falha ao publicar!");
+    }
   }
 }

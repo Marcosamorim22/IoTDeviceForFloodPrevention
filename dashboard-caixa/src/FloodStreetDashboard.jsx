@@ -326,7 +326,7 @@ export default function FloodStreetDashboard() {
           icon="🌊"
           label="Velocidade"
           value={data?.vel !== null && data?.vel !== undefined ? data.vel.toFixed(1) : null}
-          unit="m/s"
+          unit="cm/min"
         />
         <MetricCard
           icon="🕐"
