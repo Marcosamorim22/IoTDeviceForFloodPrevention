@@ -116,7 +116,7 @@ void loop() {
 
     String payload = "{";
     payload += "\"nivel_agua\": "  + String(nivel_agua, 2)  + ", ";
-    payload += "\"porcentagem\": " + String(porcentagem, 1) + ", ";
+    payload += "\"porcentagem\": "  + String(porcentagem, 1) + ", ";
     payload += "\"velocidade\": "  + String(velocidade, 2)  + "}";
 
     if (client.publish("sensor/caixa/medicao", payload.c_str())) {
