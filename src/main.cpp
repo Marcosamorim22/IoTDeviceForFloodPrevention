@@ -2,6 +2,9 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
+// ==========================================
+// CONFIGURAÇÕES DE REDE E MQTT
+// ==========================================
 const char* nomeRede    = "MVT-AnaLaura";
 const char* senhaRede   = "98012704AL";
 
@@ -10,80 +13,83 @@ const int   portaMqtt    = 8883;
 const char* usuarioMqtt  = "marcos";
 const char* senhaMqtt    = "mama3CIN";
 
+// ==========================================
+// CONFIGURAÇÕES DO SENSOR ULTRASSÔNICO
+// ==========================================
 const int pinoTrig = 14;  // D5
 const int pinoEcho = 13;  // D7
 const float ALTURA_TOTAL_CM = 200.0;
 
-
 unsigned long tempoUltimaPublicacao = 0;
-const long    intervaloPublicacao   = 2000;   // publica a cada 2s
-
+const long    intervaloPublicacao   = 2000;   // Publica a cada 2 segundos
 unsigned long tempoUltimaReconexao = 0;
-const long    intervaloReconexao   = 5000;    // tenta reconectar a cada 5s
-
+const long    intervaloReconexao   = 5000;    
 
 float         nivelAnterior            = 0.0;
 unsigned long tempoUltimoCalcVelocidade = 0;
 float         velocidade               = 0.0;   // cm/min
-const long    intervaloVelocidade      = 5000;  // recalcula a cada 5s
+const long    intervaloVelocidade      = 5000;  
 
 WiFiClientSecure clienteSeguro;
 PubSubClient     clienteMqtt(clienteSeguro);
 
+// ==========================================
+// FILTRO DE KALMAN (Suaviza marolas da água)
+// ==========================================
+float kalman_estimativa = 0.0;
+float kalman_erro       = 1.0;
+float kalman_Q          = 0.05; // Velocidade de mudança real
+float kalman_R          = 2.0;  // Ruído do sensor
 
-void conectarWifi() {
-  delay(10);
-  Serial.println();
-  Serial.print("Conectando na rede: ");
-  Serial.println(nomeRede);
-  WiFi.begin(nomeRede, senhaRede);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi conectado! IP: " + WiFi.localIP().toString());
+float aplicarKalman(float medidaBruta) {
+  float predicao_erro = kalman_erro + kalman_Q;
+  float K = predicao_erro / (predicao_erro + kalman_R);
+  kalman_estimativa = kalman_estimativa + K * (medidaBruta - kalman_estimativa);
+  kalman_erro = (1 - K) * predicao_erro;
+  return kalman_estimativa;
 }
 
+// ==========================================
+// FUNÇÕES DE CONEXÃO
+// ==========================================
+void conectarWifi() {
+  delay(10);
+  Serial.print("\nConectando na rede: ");
+  Serial.println(nomeRede);
+  WiFi.begin(nomeRede, senhaRede);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
+  Serial.println("\nWiFi conectado!");
+}
 
-// Retorna true se conectado (ou reconectou), false caso contrário.
 bool tentarReconectar() {
   unsigned long agora = millis();
-  if (agora - tempoUltimaReconexao < intervaloReconexao) {
-    return false;  // ainda dentro do intervalo de espera
-  }
+  if (agora - tempoUltimaReconexao < intervaloReconexao) return false;
   tempoUltimaReconexao = agora;
 
-  Serial.print("Tentando conexão MQTT...");
   String idCliente = "ESP8266-" + String(random(0xffff), HEX);
-
   if (clienteMqtt.connect(idCliente.c_str(), usuarioMqtt, senhaMqtt)) {
-    Serial.println("Conectado!");
+    Serial.println("MQTT Conectado!");
     return true;
   }
-
-  Serial.print("Falhou, rc=");
-  Serial.print(clienteMqtt.state());
-  Serial.println(" — próxima tentativa em 5s.");
   return false;
 }
 
-
+// ==========================================
+// LEITURA DO SENSOR (Filtro de Mediana)
+// ==========================================
 const int TOTAL_LEITURAS = 5;
 
-// Leitura bruta — retorna -1 se timeout
 float lerDistanciaBruta() {
   digitalWrite(pinoTrig, LOW);
   delayMicroseconds(2);
   digitalWrite(pinoTrig, HIGH);
   delayMicroseconds(10);
   digitalWrite(pinoTrig, LOW);
-
   long duracao = pulseIn(pinoEcho, HIGH, 30000);
   if (duracao == 0) return -1;
   return duracao * 0.034 / 2.0;
 }
 
-// Ordena array por insertion sort (simples e eficiente para arrays pequenos)
 void ordenar(float* arr, int n) {
   for (int i = 1; i < n; i++) {
     float chave = arr[i];
@@ -96,61 +102,36 @@ void ordenar(float* arr, int n) {
   }
 }
 
-// Coleta 5 leituras, descarta inválidas e retorna a mediana.
-// Retorna -1 se menos de 3 leituras forem válidas.
 float lerDistanciaMedianaCM() {
   float leituras[TOTAL_LEITURAS];
   int validas = 0;
-
   for (int i = 0; i < TOTAL_LEITURAS; i++) {
     float d = lerDistanciaBruta();
-    if (d >= 0) {
-      leituras[validas] = d;
-      validas++;
-    }
-    delay(30); // aguarda eco residual dissipar
+    if (d >= 0) { leituras[validas++] = d; }
+    delay(30); 
   }
-
-  // Exige mínimo de 3 leituras válidas para calcular mediana confiável
-  if (validas < 3) {
-    Serial.print("Mediana descartada: apenas ");
-    Serial.print(validas);
-    Serial.println(" leituras validas.");
-    return -1;
-  }
-
+  if (validas < 3) return -1;
   ordenar(leituras, validas);
-
-  float mediana = leituras[validas / 2];
-
-  Serial.print("Leituras [");
-  for (int i = 0; i < validas; i++) {
-    Serial.print(leituras[i], 1);
-    if (i < validas - 1) Serial.print(", ");
-  }
-  Serial.print("] → Mediana: ");
-  Serial.print(mediana, 1);
-  Serial.println(" cm");
-
-  return mediana;
+  return leituras[validas / 2]; 
 }
 
-
+// ==========================================
+// SETUP E LOOP
+// ==========================================
 void setup() {
   Serial.begin(115200);
   pinMode(pinoTrig, OUTPUT);
   pinMode(pinoEcho, INPUT);
+  
   conectarWifi();
   clienteSeguro.setInsecure();
   clienteMqtt.setServer(servidorMqtt, portaMqtt);
 
-  // Inicializa nivelAnterior com a primeira leitura válida do sensor.
-  // Tenta até 10 vezes para não ficar preso se o sensor falhar uma vez.
   for (int tentativa = 0; tentativa < 10; tentativa++) {
     float distanciaInicial = lerDistanciaMedianaCM();
     if (distanciaInicial >= 0) {
+      kalman_estimativa = distanciaInicial; 
       nivelAnterior = constrain(ALTURA_TOTAL_CM - distanciaInicial, 0, ALTURA_TOTAL_CM);
-      Serial.println("Nivel inicial: " + String(nivelAnterior, 1) + " cm");
       break;
     }
     delay(200);
@@ -158,49 +139,36 @@ void setup() {
   tempoUltimoCalcVelocidade = millis();
 }
 
-
 void loop() {
-  //não bloqueia o loop enquanto reconecta
   if (!clienteMqtt.connected()) {
     tentarReconectar();
-    return;  // aguarda próxima iteração sem tentar publicar
+    return;
   }
   clienteMqtt.loop();
 
   unsigned long agora = millis();
 
-  // ── Cálculo de velocidade (a cada 5s) ─────────────────
-  if (agora - tempoUltimoCalcVelocidade >= intervaloVelocidade) {
-    float distancia = lerDistanciaMedianaCM();
-    if (distancia >= 0) {
-      float nivelAtual      = constrain(ALTURA_TOTAL_CM - distancia, 0, ALTURA_TOTAL_CM);
-      float deltaMinutos    = (agora - tempoUltimoCalcVelocidade) / 60000.0;
-      velocidade            = (nivelAtual - nivelAnterior) / deltaMinutos;
-      nivelAnterior         = nivelAtual;
-    }
-    tempoUltimoCalcVelocidade = agora;
-  }
+  if ((agora - tempoUltimoCalcVelocidade >= intervaloVelocidade) || (agora - tempoUltimaPublicacao >= intervaloPublicacao)) {
+    float distanciaMediana = lerDistanciaMedianaCM();
+    if (distanciaMediana < 0) return; 
 
-  // ── Publicação a cada 2s ───────────────────────────────
-  if (agora - tempoUltimaPublicacao >= intervaloPublicacao) {
-    tempoUltimaPublicacao = agora;
+    // Aplica o Filtro de Kalman
+    float distanciaSuavizada = aplicarKalman(distanciaMediana);
+    float nivelAtual = constrain(ALTURA_TOTAL_CM - distanciaSuavizada, 0, ALTURA_TOTAL_CM);
 
-    float distanciaCM = lerDistanciaMedianaCM();
-    if (distanciaCM < 0) {
-      Serial.println("Erro: leitura inválida do sensor.");
-      return;
+    // Calcula Velocidade
+    if (agora - tempoUltimoCalcVelocidade >= intervaloVelocidade) {
+      float deltaMinutos = (agora - tempoUltimoCalcVelocidade) / 60000.0;
+      velocidade = (nivelAtual - nivelAnterior) / deltaMinutos;
+      nivelAnterior = nivelAtual;
+      tempoUltimoCalcVelocidade = agora;
     }
 
-    float nivelAgua = constrain(ALTURA_TOTAL_CM - distanciaCM, 0, ALTURA_TOTAL_CM);
-
-    String carga = "{";
-    carga += "\"nivel_agua\": "  + String(nivelAgua,  2) + ", ";
-    carga += "\"velocidade\": "  + String(velocidade, 2) + "}";
-
-    if (clienteMqtt.publish("sensor/rua/medicao", carga.c_str())) {
-      Serial.println("Enviado: " + carga);
-    } else {
-      Serial.println("Falha ao publicar!");
+    // Publica no MQTT
+    if (agora - tempoUltimaPublicacao >= intervaloPublicacao) {
+      tempoUltimaPublicacao = agora;
+      String carga = "{\"nivel_agua\": " + String(nivelAtual, 2) + ", \"velocidade\": " + String(velocidade, 2) + "}";
+      clienteMqtt.publish("sensor/rua/medicao", carga.c_str());
     }
   }
 }
