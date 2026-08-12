@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/IoTDeviceForFloodPrevention/static/css/main.323d7611.css",
-    "main.js": "/IoTDeviceForFloodPrevention/static/js/main.4e93a700.js",
+    "main.js": "/IoTDeviceForFloodPrevention/static/js/main.5eddc076.js",
     "static/js/453.6be0854f.chunk.js": "/IoTDeviceForFloodPrevention/static/js/453.6be0854f.chunk.js",
     "index.html": "/IoTDeviceForFloodPrevention/index.html",
     "main.323d7611.css.map": "/IoTDeviceForFloodPrevention/static/css/main.323d7611.css.map",
-    "main.4e93a700.js.map": "/IoTDeviceForFloodPrevention/static/js/main.4e93a700.js.map",
+    "main.5eddc076.js.map": "/IoTDeviceForFloodPrevention/static/js/main.5eddc076.js.map",
     "453.6be0854f.chunk.js.map": "/IoTDeviceForFloodPrevention/static/js/453.6be0854f.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.323d7611.css",
-    "static/js/main.4e93a700.js"
+    "static/js/main.5eddc076.js"
   ]
 }
