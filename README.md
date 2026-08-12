@@ -14,14 +14,14 @@ e a criação de um modelo de gestão de desastres mais ágil, democrático e fu
 
 ### Passo 1: Clonar o Repositório
 Abra o terminal do VS Code e execute este comando:
-
-git clone https://github.com/Marcosamorim22/IoTDeviceForFloodPrevention.git
-
-
-
 ```bash
+git clone https://github.com/Marcosamorim22/IoTDeviceForFloodPrevention.git
+``` 
 
-Passo 2: Instalar a Extensão PlatformIO no VS Code
+
+
+
+### Passo 2: Instalar a Extensão PlatformIO no VS Code
 Abra o Visual Studio Code.
 
 Clique no ícone de Extensões no menu lateral esquerdo (Ctrl + Shift + X ou Cmd + Shift + X).
@@ -32,9 +32,9 @@ Aguarde a instalação concluir.
 
 Vá na extensão platform.io > Open Folder... e abra a pasta do projeto que você clonou.
 
-Passo 3: Configurar a Placa no platformio.ini
+### Passo 3: Configurar a Placa no platformio.ini
 Localize o arquivo platformio.ini na raiz do projeto. Substitua o conteúdo do arquivo de acordo com a placa que você está utilizando:
-
+```bash
 🔹 Opção A: Para ESP32
 Ini, TOML
 [env:esp32dev]
@@ -51,8 +51,8 @@ board = nodemcuv2
 framework = arduino
 monitor_speed = 115200
 Atenção: Salve o arquivo (Ctrl + S) após definir a placa correspondente.
-
-Passo 4: Conectar o Sensor à Placa
+``` 
+### Passo 4: Conectar o Sensor à Placa
 Com a placa desligada do computador, faça as conexões físicas dos pinos do sensor na ESP:
 
 VCC (Sensor) ➔ 3.3V ou 5V (ESP) (verifique a voltagem do seu sensor)
@@ -61,7 +61,7 @@ GND (Sensor) ➔ GND (ESP)
 
 Sinal / Data (Sensor) ➔ Pino GPIO definido no código (ex: GPIO 4 / D2)
 
-Passo 5: Compilar e Carregar o Código na ESP
+### Passo 5: Compilar e Carregar o Código na ESP
 Conecte a placa ESP ao computador utilizando um cabo USB de dados.
 
 Na barra de status azul na parte inferior do VS Code:
@@ -71,8 +71,8 @@ Clique no ícone ✓ (Build) para compilar o código.
 Clique no ícone ➔ (Upload) para gravar o programa na placa.
 
 Clique no ícone de Tomada / Plugue (Serial Monitor) configurado para a taxa de 115200 baud para visualizar a inicialização e mensagens do sistema.
-```
-Passo 6: Conectar ao Wi-Fi e Acessar a Interface Web
+
+### Passo 6: Conectar ao Wi-Fi e Acessar a Interface Web
 Certifique-se de que o seu computador/celular e a ESP estejam conectados na mesma rede Wi-Fi.
 
 Acompanhe pelo Serial Monitor o endereço IP atribuído à placa (exemplo: 192.168.1.15).
