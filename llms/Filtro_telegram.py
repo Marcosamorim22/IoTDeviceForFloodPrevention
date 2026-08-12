@@ -1,70 +1,148 @@
 import os
 import json
-import google.generativeai as genai
+import numpy as np
+import pandas as pd
 import paho.mqtt.client as mqtt
-from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
+import ollama
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
 
-TELEGRAM_TOKEN = "8793721871:AAFpdDR3oLOzV9bx0vN26DgjeaaNIV4DgB8"
-GEMINI_API_KEY = "AQ.Ab8RN6LYl-PWkXjywuxRtahX-9HnDLoqj0K8HKVevpuhuqL_CQ"
-
+# ==========================================
+# CONFIGURAÇÕES
+# ==========================================
 MQTT_BROKER = "329132687fb349a09107e68a8fd32f5c.s1.eu.hivemq.cloud"
 MQTT_PORT = 8883
 MQTT_USER = "marcos"
 MQTT_PASS = "mama3CIN"
 
+TOPIC_MEDICAO = "sensor/rua/medicao"
+TOPIC_SOCIAL = "sensor/rua/social"
+TOPIC_PREVISAO = "sensor/rua/previsao"  # NOVO: tópico consumido pela aba "Previsão IA" do dashboard
 
-genai.configure(api_key=GEMINI_API_KEY)
-modelo_ia = genai.GenerativeModel('gemini-3.5-flash')
+# Modelo do Ollama que você baixou para gerar o texto do alerta
+MODELO_OLLAMA = "llama3.2"
+
+situacao_atual = {
+    "nivel_agua_cm": 0.0,
+    "velocidade": 0.0,
+    "nota_social": 0
+}
+
+print("Construindo o modelo LSTM...")
+modelo_lstm = Sequential()
+modelo_lstm.add(LSTM(50, activation='relu', input_shape=(1, 3)))
+modelo_lstm.add(Dense(1))
+modelo_lstm.compile(optimizer='adam', loss='mse')
+
+try:
+    print("Carregando histórico para treinamento...")
+    df_treino = pd.read_csv("historico_enchentes.csv")
+    X_treino = df_treino[['nivel_agua_cm', 'velocidade', 'nota_social']].values
+    Y_treino = df_treino['nivel_agua_cm'].shift(-3).values  # Prevê 3 passos (15 min) à frente
+
+    X_treino = X_treino[:-3]
+    Y_treino = Y_treino[:-3]
+    X_treino = X_treino.reshape((X_treino.shape[0], 1, X_treino.shape[1]))
+
+    print("Treinando a IA...")
+    modelo_lstm.fit(X_treino, Y_treino, epochs=10, batch_size=32, verbose=0)
+    print("Treinamento concluído!")
+except FileNotFoundError:
+    print("AVISO: historico_enchentes.csv não encontrado. LSTM sem treinamento.")
 
 
-mqtt_client = mqtt.Client(client_id="bot_telegram_publisher")
-mqtt_client.tls_set()
-mqtt_client.username_pw_set(MQTT_USER, MQTT_PASS)
+def publicar_previsao(client, previsao_futura):
+    """
+    NOVO: publica a previsão do LSTM no tópico MQTT dedicado, para que o
+    dashboard React consuma na aba "Previsão IA".
+    """
+    payload_previsao = {
+        "timestamp": pd.Timestamp.now().isoformat(),
+        "nivel_atual_cm": situacao_atual["nivel_agua_cm"],
+        "previsao_15min_cm": float(previsao_futura),
+        "velocidade": situacao_atual["velocidade"],
+    }
+    client.publish(TOPIC_PREVISAO, json.dumps(payload_previsao))
+    print(f">>> Previsão publicada em '{TOPIC_PREVISAO}': {payload_previsao}")
 
 
-PROMPT_SISTEMA = """
-Você é um sistema rigoroso de telemetria de enchentes. 
-Sua única função é ler a mensagem do morador e classificar o risco de alagamento atual com uma nota de 0 a 10.
+def gerar_alerta_llm(previsao_futura):
+    prompt_sistema = """
+    Você é o módulo emissor de alertas técnicos da Defesa Civil.
+    Escreva um alerta curto de emergência direcionado à população, com base
+    exclusivamente nos dados numéricos fornecidos.
+    Seja objetivo, direto e claro. Não invente números que não foram passados.
+    """
 
-CRITÉRIOS:
-0: Assuntos aleatórios ou mensagens sem relação com chuva.
-1 a 3: Menções a chuva normal, céu escuro.
-4 a 6: Chuva forte contínua, poças, bueiro cheio.
-7 a 9: Água invadindo calçada, dificuldade de transitar.
-10: Alagamento extremo, água nas casas, carros boiando.
+    prompt_usuario = f"""
+    Dados atuais do sensor:
+    - Nível da Água: {situacao_atual['nivel_agua_cm']} cm
+    - Velocidade de subida: {situacao_atual['velocidade']} cm/min
+    - Índice de engajamento social de risco (0 a 10): {situacao_atual['nota_social']}
+    - Modelo Preditivo LSTM (15 min): {previsao_futura:.1f} cm.
+    """
 
-REGRA DE FERRO: Responda APENAS com o número (ex: 8).
-"""
-
-
-async def processar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    texto_recebido = update.message.text
-    
     try:
-        
-        comando = f"{PROMPT_SISTEMA}\n\nMensagem do morador: '{texto_recebido}'"
-        resposta_ia = modelo_ia.generate_content(comando)
-        nota_risco = int(resposta_ia.text.strip())
-        
-        print(f"Mensagem: '{texto_recebido}' -> Risco: {nota_risco}/10")
-        
-
-        if not mqtt_client.is_connected():
-            mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
-        mqtt_client.publish("sensor/rua/social", str(nota_risco))
-
-        if nota_risco >= 7:
-            await update.message.reply_text(f"Alerta registrado no sistema! Risco: {nota_risco}/10")
-            
+        resposta = ollama.chat(
+            model=MODELO_OLLAMA,
+            messages=[
+                {"role": "system", "content": prompt_sistema},
+                {"role": "user", "content": prompt_usuario}
+            ]
+        )
+        print("\n📢 ALERTA DA DEFESA CIVIL EMITIDO PELO OLLAMA 📢")
+        print(resposta['message']['content'].strip())
+        print("-" * 50)
     except Exception as e:
-        print(f"Erro ao processar: {e}")
+        print(f"Erro ao gerar alerta com Ollama: {e}")
 
-if __name__ == '__main__':
-    print("Bot do Telegram Iniciado!")
-    mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
-    mqtt_client.loop_start() 
-    
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), processar_mensagem))
-    app.run_polling()
+
+def on_message(client, userdata, msg):
+    topico = msg.topic
+    carga = msg.payload.decode()
+    print(f"[{topico}] -> {carga}")
+
+    if topico == TOPIC_MEDICAO:
+        dados = json.loads(carga)
+        situacao_atual["nivel_agua_cm"] = dados["nivel_agua"]
+        situacao_atual["velocidade"] = dados["velocidade"]
+    elif topico == TOPIC_SOCIAL:
+        try:
+            dados_sociais = json.loads(carga)
+            if isinstance(dados_sociais, dict):
+                # Telegram/bot mandou JSON estruturado: {"nota": 4}
+                situacao_atual["nota_social"] = int(dados_sociais["nota"])
+            else:
+                # json.loads("4") também é válido e retorna int/float puro
+                situacao_atual["nota_social"] = int(dados_sociais)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            # Fallback final: carga não é JSON válido, tenta como texto cru
+            situacao_atual["nota_social"] = int(carga)
+
+    if situacao_atual["velocidade"] > 1.0 or situacao_atual["nota_social"] >= 6:
+        dados_entrada = np.array([[[
+            situacao_atual["nivel_agua_cm"],
+            situacao_atual["velocidade"],
+            situacao_atual["nota_social"]
+        ]]])
+
+        previsao = modelo_lstm.predict(dados_entrada, verbose=0)[0][0]
+        print(f">>> Previsão LSTM (15 min): {previsao:.1f} cm")
+
+        publicar_previsao(client, previsao)  # NOVO: publica pro dashboard
+        gerar_alerta_llm(previsao)
+
+        situacao_atual["nota_social"] = 0
+
+
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="cerebro_ia_subscriber")
+client.tls_set()
+client.username_pw_set(MQTT_USER, MQTT_PASS)
+client.on_message = on_message
+
+client.connect(MQTT_BROKER, MQTT_PORT)
+client.subscribe(TOPIC_MEDICAO)
+client.subscribe(TOPIC_SOCIAL)
+
+print("Cérebro Preditivo ONLINE (com Ollama) e escutando a cidade...")
+client.loop_forever()

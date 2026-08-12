@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine,
+  Tooltip, ResponsiveContainer, ReferenceLine, Legend,
 } from "recharts";
 import mqtt from "mqtt";
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
@@ -9,6 +9,7 @@ import "leaflet/dist/leaflet.css";
 
 // ─── Configuração ──────────────────────────────────────────────────────────────
 const TOPIC = "sensor/rua/medicao";
+const TOPIC_PREVISAO = "sensor/rua/previsao"; // NOVO: tópico das previsões do LSTM
 const MAX_HISTORY = 40;
 
 const MQTT_CONFIG = {
@@ -133,6 +134,11 @@ export default function FloodStreetDashboard() {
   const [data, setData] = useState(null);
   const [history, setHistory] = useState([]);
   const [picoMax, setPicoMax] = useState(null);
+
+  // NOVO: estados da previsão LSTM
+  const [previsaoHistory, setPrevisaoHistory] = useState([]);
+  const [ultimaPrevisao, setUltimaPrevisao] = useState(null);
+
   const clientRef = useRef(null);
 
   const connect = useCallback(() => {
@@ -149,18 +155,35 @@ export default function FloodStreetDashboard() {
     client.on("connect", () => {
       setConnState("connected");
       client.subscribe(TOPIC);
+      client.subscribe(TOPIC_PREVISAO); // NOVO
     });
 
-    client.on("message", (_topic, payload) => {
+    client.on("message", (topic, payload) => {
       try {
         const d = JSON.parse(payload.toString());
-        const cm = parseFloat(d.nivel_agua);
-        const vel = d.velocidade !== undefined ? parseFloat(d.velocidade) : 0;
-        const time = new Date().toLocaleTimeString("pt-BR");
 
-        setData({ cm, vel, time });
-        setPicoMax((prev) => (prev === null || cm > prev ? cm : prev));
-        setHistory((prev) => [...prev, { time, cm: parseFloat(cm.toFixed(1)) }].slice(-MAX_HISTORY));
+        if (topic === TOPIC) {
+          const cm = parseFloat(d.nivel_agua);
+          const vel = d.velocidade !== undefined ? parseFloat(d.velocidade) : 0;
+          const time = new Date().toLocaleTimeString("pt-BR");
+
+          setData({ cm, vel, time });
+          setPicoMax((prev) => (prev === null || cm > prev ? cm : prev));
+          setHistory((prev) => [...prev, { time, cm: parseFloat(cm.toFixed(1)) }].slice(-MAX_HISTORY));
+
+        } else if (topic === TOPIC_PREVISAO) {
+          // NOVO: trata mensagens de previsão do LSTM
+          const time = new Date().toLocaleTimeString("pt-BR");
+          const atual = parseFloat(d.nivel_atual_cm);
+          const previsto = parseFloat(d.previsao_15min_cm);
+          const ponto = {
+            time,
+            atual: Number.isFinite(atual) ? parseFloat(atual.toFixed(1)) : null,
+            previsto: Number.isFinite(previsto) ? parseFloat(previsto.toFixed(1)) : null,
+          };
+          setUltimaPrevisao(ponto);
+          setPrevisaoHistory((prev) => [...prev, ponto].slice(-MAX_HISTORY));
+        }
       } catch (err) {
         console.error("Payload inválido", err);
       }
@@ -171,9 +194,9 @@ export default function FloodStreetDashboard() {
     clientRef.current = client;
   }, []);
 
-  useEffect(() => { 
-    connect(); 
-    return () => clientRef.current?.end(true); 
+  useEffect(() => {
+    connect();
+    return () => clientRef.current?.end(true);
   }, [connect]);
 
   const risco = data ? getRisco(data.cm) : null;
@@ -185,9 +208,14 @@ export default function FloodStreetDashboard() {
   const statusLabels = { disconnected: "Desconectado", connecting: "Conectando...", connected: "Conectado", error: "Erro MQTT" };
   const chartCor = risco ? risco.cor : "#378ADD";
 
+  // NOVO: indicador de variação prevista
+  const variacaoPrevista =
+    ultimaPrevisao && ultimaPrevisao.atual != null && ultimaPrevisao.previsto != null
+      ? parseFloat((ultimaPrevisao.previsto - ultimaPrevisao.atual).toFixed(1))
+      : null;
+
   const sensoresMapa = [
     { id: 1, nome: "Estacionamento Centro de informática", lat: -8.056028766713343, lng: -34.9511884923378, cm: data?.cm ?? 0, live: true },
-
   ];
 
   return (
@@ -261,8 +289,52 @@ export default function FloodStreetDashboard() {
               )}
             </div>
           </div>
+
+          {/* ─── Previsão LSTM (agora na mesma aba do nível) ──────────────── */}
+          <div style={S.card}>
+            <div style={S.cardTitle}>Previsão LSTM — próximos 15 min</div>
+
+            {ultimaPrevisao && (
+              <div style={S.metricsGrid}>
+                <MetricCard label="Nível atual (na previsão)" value={ultimaPrevisao.atual} unit="cm" />
+                <MetricCard
+                  label="Previsto em 15 min"
+                  value={ultimaPrevisao.previsto}
+                  unit="cm"
+                  cor={variacaoPrevista != null && variacaoPrevista > 0 ? "#A32D2D" : "#3B6D11"}
+                />
+                <MetricCard
+                  label="Variação prevista"
+                  value={variacaoPrevista != null ? (variacaoPrevista > 0 ? `+${variacaoPrevista}` : variacaoPrevista) : null}
+                  unit="cm"
+                  cor={variacaoPrevista != null && variacaoPrevista > 0 ? "#A32D2D" : "#3B6D11"}
+                />
+              </div>
+            )}
+
+            {previsaoHistory.length === 0 ? (
+              <div style={{ color: "#888780", fontSize: 13, paddingTop: 16 }}>
+                Aguardando previsões do modelo LSTM...
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={previsaoHistory} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" />
+                  <XAxis dataKey="time" tick={{ fontSize: 10, fill: "#888780" }} />
+                  <YAxis domain={[0, 120]} tick={{ fontSize: 10, fill: "#888780" }} tickFormatter={(v) => v + "cm"} />
+                  <ReferenceLine y={LIMIARES.atencao}  stroke="#FAC775" strokeDasharray="4 3" label={{ value: "30cm", fontSize: 9, fill: "#FAC775" }} />
+                  <ReferenceLine y={LIMIARES.perigoso} stroke="#F09595" strokeDasharray="4 3" label={{ value: "60cm", fontSize: 9, fill: "#F09595" }} />
+                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Line type="monotone" dataKey="atual"    name="Nível real"     stroke="#378ADD" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="previsto" name="Previsão LSTM" stroke="#A32D2D" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2 }} isAnimationActive={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
         </>
       ) : (
+        // ─── Mapa ────────────────────────────────────────────────────────────
         <div style={{ ...S.card, padding: 0, overflow: "hidden" }}>
           <MapContainer center={[-8.0476, -34.8770]} zoom={13} style={{ height: "500px", width: "100%", zIndex: 0 }}>
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />

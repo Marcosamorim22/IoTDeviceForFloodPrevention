@@ -5,8 +5,8 @@
 // ==========================================
 // CONFIGURAÇÕES DE REDE E MQTT
 // ==========================================
-const char* nomeRede    = "CINGUESTS";
-const char* senhaRede   = "acessocin";
+const char* nomeRede    = "MVT-AnaLaura";
+const char* senhaRede   = "98012704AL";
 
 const char* servidorMqtt = "329132687fb349a09107e68a8fd32f5c.s1.eu.hivemq.cloud";
 const int   portaMqtt    = 8883;
