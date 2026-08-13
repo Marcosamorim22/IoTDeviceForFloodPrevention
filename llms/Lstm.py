@@ -17,9 +17,9 @@ MQTT_PASS = "mama3CIN"
 
 TOPIC_MEDICAO = "sensor/rua/medicao"
 TOPIC_SOCIAL = "sensor/rua/social"
-TOPIC_PREVISAO = "sensor/rua/previsao"  # NOVO: tópico consumido pela aba "Previsão IA" do dashboard
+TOPIC_PREVISAO = "sensor/rua/previsao"  
 
-# Modelo do Ollama que você baixou para gerar o texto do alerta
+
 MODELO_OLLAMA = "llama3.2"
 
 situacao_atual = {
@@ -38,7 +38,7 @@ try:
     print("Carregando histórico para treinamento...")
     df_treino = pd.read_csv("historico_enchentes.csv")
     X_treino = df_treino[['nivel_agua_cm', 'velocidade', 'nota_social']].values
-    Y_treino = df_treino['nivel_agua_cm'].shift(-3).values  # Prevê 3 passos (15 min) à frente
+    Y_treino = df_treino['nivel_agua_cm'].shift(-3).values  
 
     X_treino = X_treino[:-3]
     Y_treino = Y_treino[:-3]
@@ -123,7 +123,7 @@ def on_message(client, userdata, msg):
         previsao = modelo_lstm.predict(dados_entrada, verbose=0)[0][0]
         print(f">>> Previsão LSTM (15 min): {previsao:.1f} cm")
 
-        publicar_previsao(client, previsao)  # NOVO: publica pro dashboard
+        publicar_previsao(client, previsao)  
         gerar_alerta_llm(previsao)
 
         situacao_atual["nota_social"] = 0
