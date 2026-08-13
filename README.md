@@ -10,29 +10,76 @@ e a criação de um modelo de gestão de desastres mais ágil, democrático e fu
 
 
 
-#  Como Executar os Testes
+#  Como Executar os Testes 
+
+Para executar os testes, siga os passos abaixo: criação do ambiente virtual, instalação do Ollama e do modelo LLM, instalação das bibliotecas Python necessárias e, por fim, configuração do sensor na placa.
 
 ### Passo 1: Clonar o Repositório
 Abra o terminal do VS Code e execute este comando:
 ```bash
 git clone https://github.com/Marcosamorim22/IoTDeviceForFloodPrevention.git
 ``` 
+### Passo 2: Criar o ambiente virtual 
 
+  Abra o terminal do Vs code  e execute este comando:
 
+  #### Linux:
+```bash
+  python3 -m venv venv
+  source venv/bin/activate
+```
+#### Windows(cmd):
+```bash
+    python -m venv venv
+    venv\Scripts\activate
+```
+#### Windows(PowerShell):
+```bash
+    python -m venv venv
+    .\venv\Scripts\Activate.ps1
+```
+#### Se der erro de permissão no Powershell rode:
+```bash
+  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+### Passo 3: Instalação do ollama
+  #### Windows:
+  Baixe o instalador em [https://ollama.com/download](https://ollama.com/download)
+  
+  Após isso Execute .exe e siga o instalador (next,next,finish)  
+  ### Linux:
+  Execute esse comando no terminal
+  ```bash
+    curl -fsSL https://ollama.com/install.sh | sh
+  ```
+  ### Passo 4: Instalação llama3.2
+  Execute essa linha no vs code
+  ```bash
+    ollama pull llama3.2
+  ```
+  Para testar se baixou com sucesso use o comando
+  ```bash
+  ollama list
+  ```
+### Passo 5: Baixar todas as bibliotecas necessarias
+  Para baixar as bibliotecas necessarias execute esse comando no terminal do VS code
+  ```bash
+    cd llms
+    pip install python-telegram-bot tensorflow numpy pandas paho-mqtt ollama
+  ```
 
-
-### Passo 2: Instalar a Extensão PlatformIO no VS Code
+### Passo 6: Instalar a Extensão PlatformIO no VS Code
 Abra o Visual Studio Code.
 
-Clique no ícone de Extensões no menu lateral esquerdo (Ctrl + Shift + X ou Cmd + Shift + X).
+> Clique no ícone de Extensões no menu lateral esquerdo (Ctrl + Shift + X ou Cmd + Shift + X).
 
-Pesquise por PlatformIO IDE e clique em Install.
+> Pesquise por PlatformIO IDE e clique em Install.
 
-Aguarde a instalação concluir.
+> Aguarde a instalação concluir.
 
-Vá na extensão platform.io > Open Folder... e abra a pasta do projeto que você clonou.
+> Vá na extensão platform.io > Open Folder... e abra a pasta do projeto que você clonou.
 
-### Passo 3: Configurar a Placa no platformio.ini
+### Passo 7: Configurar a Placa no platformio.ini
 Localize o arquivo platformio.ini na raiz do projeto. Substitua o conteúdo do arquivo de acordo com a placa que você está utilizando:
 ```bash
 🔹 Opção A: Para ESP32
@@ -52,27 +99,29 @@ framework = arduino
 monitor_speed = 115200
 Atenção: Salve o arquivo (Ctrl + S) após definir a placa correspondente.
 ``` 
-### Passo 4: Conectar o Sensor à Placa
+### Passo 8: Conectar o Sensor à Placa
 Com a placa desligada do computador, faça as conexões físicas dos pinos do sensor na ESP:
 
-VCC (Sensor) ➔ 3.3V ou 5V (ESP) (verifique a voltagem do seu sensor)
+> VCC (Sensor) ➔ 3.3V ou 5V (ESP) (verifique a voltagem do seu sensor)
 
-GND (Sensor) ➔ GND (ESP)
+> GND (Sensor) ➔ GND (ESP)
 
-Sinal / Data (Sensor) ➔ Pino GPIO definido no código (ex: GPIO 4 / D2)
+> Sinal / Data (Sensor) ➔ Pino GPIO definido no código (ex: GPIO 4 / D2)
 
-### Passo 5: Compilar e Carregar o Código na ESP
+### Passo 9: Compilar e Carregar o Código na ESP
 Conecte a placa ESP ao computador utilizando um cabo USB de dados.
+#### ⚠️ Atenção:
+Antes de compilar, modifique o SSID e a senha da rede Wi-Fi no código-fonte de acordo com a rede disponível na sua região, caso contrário a placa não conseguirá se conectar à internet.
 
 Na barra de status azul na parte inferior do VS Code:
 
-Clique no ícone ✓ (Build) para compilar o código.
+> Clique no ícone ✓ (Build) para compilar o código.
 
-Clique no ícone ➔ (Upload) para gravar o programa na placa.
+> Clique no ícone ➔ (Upload) para gravar o programa na placa.
 
-Clique no ícone de Tomada / Plugue (Serial Monitor) configurado para a taxa de 115200 baud para visualizar a inicialização e mensagens do sistema.
+> Clique no ícone de Tomada / Plugue (Serial Monitor) configurado para a taxa de 115200 baud para visualizar a inicialização e mensagens do sistema.
 
-### Passo 6: Conectar ao Wi-Fi e Acessar a Interface Web
+### Passo 10: Conectar ao Wi-Fi e Acessar a Interface Web
 Certifique-se de que o seu computador/celular e a ESP estejam conectados na mesma rede Wi-Fi.
 
 Acompanhe pelo Serial Monitor o endereço IP atribuído à placa (exemplo: 192.168.1.15).
