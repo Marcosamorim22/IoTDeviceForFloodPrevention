@@ -62,6 +62,28 @@ git clone https://github.com/Marcosamorim22/IoTDeviceForFloodPrevention.git
   ollama list
   ```
 ### Passo 5: Baixar todas as bibliotecas necessarias
+  > Observação: verifique a versão do seu python, ela deverá ser 3.11.xxx
+
+  #### Instalação do python 3.11:
+  
+  Windows:
+  
+  Acesse a página oficial da versão 3.11.x:
+  
+  [Python 3.11.9 — página oficial](https://www.python.org/downloads/release/python-3119/?utm_source=chatgpt.com)  
+  
+  Na seção Files, procure:  
+  
+  Windows installer (64-bit)  
+  
+
+  Ubuntu: Execute essa comando no vs code
+  
+    sudo apt install python3.11 python3.11-venv python3.11-dev
+
+
+  \
+  \
   Para baixar as bibliotecas necessarias execute esse comando no terminal do VS code
   ```bash
     cd llms
@@ -81,24 +103,33 @@ Abra o Visual Studio Code.
 
 ### Passo 7: Configurar a Placa no platformio.ini
 Localize o arquivo platformio.ini na raiz do projeto. Substitua o conteúdo do arquivo de acordo com a placa que você está utilizando:
-```bash
+
 🔹 Opção A: Para ESP32
-Ini, TOML
-[env:esp32dev]
-platform = espressif32
-board = esp32dev
-framework = arduino
-monitor_speed = 115200
+> [env:esp32dev]
+
+> platform = espressif32
+
+> board = esp32dev
+
+> framework = arduino
+
+> monitor_speed = 115200
+
 
 🔹 Opção B: Para ESP8266 (ex: NodeMCU)
-Ini, TOML
-[env:nodemcuv2]
-platform = espressif8266
-board = nodemcuv2
-framework = arduino
-monitor_speed = 115200
-Atenção: Salve o arquivo (Ctrl + S) após definir a placa correspondente.
-``` 
+
+> [env:nodemcuv2]
+
+> platform = espressif8266
+
+> board = nodemcuv2
+
+> framework = arduino
+
+> monitor_speed = 115200
+
+
+#### Atenção: Salve o arquivo (Ctrl + S) após definir a placa correspondente.
 ### Passo 8: Conectar o Sensor à Placa
 Com a placa desligada do computador, faça as conexões físicas dos pinos do sensor na ESP:
 
@@ -108,12 +139,23 @@ Com a placa desligada do computador, faça as conexões físicas dos pinos do se
 
 > Sinal / Data (Sensor) ➔ Pino GPIO definido no código (ex: GPIO 4 / D2)
 
-### Passo 9: Compilar e Carregar o Código na ESP
-Conecte a placa ESP ao computador utilizando um cabo USB de dados.
-#### ⚠️ Atenção:
-Antes de compilar, modifique o SSID e a senha da rede Wi-Fi no código-fonte de acordo com a rede disponível na sua região, caso contrário a placa não conseguirá se conectar à internet.
 
-Na barra de status azul na parte inferior do VS Code:
+
+### Passo 9: Compilar e Carregar o Código na ESP
+
+Conecte a placa ESP ao computador utilizando um cabo USB de dados.
+#### Atenção 1:
+Se caso estiver no windows e não conseguir conectar mostrando "the port is busy or doesn't exist".
+Verifique DEVICE MANAGER,  se o cabo de dados nao estiver  como porta COM você deverá baixar o driver CP210x
+
+##### Instalação do Driver:
+ Baixar a versão CP210x Universal Windows Driver         
+           
+  [Download do driver CP210x — Silicon Labs](https://www.silabs.com/software-and-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads)
+    
+
+#### ⚠️ Atenção 2:
+Antes de compilar, modifique o SSID e a senha da rede Wi-Fi no código-fonte de acordo com a rede disponível na sua região, caso contrário a placa não conseguirá se conectar à internet.
 
 > Clique no ícone ✓ (Build) para compilar o código.
 
@@ -121,7 +163,25 @@ Na barra de status azul na parte inferior do VS Code:
 
 > Clique no ícone de Tomada / Plugue (Serial Monitor) configurado para a taxa de 115200 baud para visualizar a inicialização e mensagens do sistema.
 
-### Passo 10: Conectar ao Wi-Fi e Acessar a Interface Web
+
+  
+### Passo 10: Rodar os LLMS  
+
+Abra um novo terminal e digite  esse comando:
+   Windows:
+    
+    cd llms 
+    python Filtro_telegram.py
+    python Lstm.py  
+
+  Ubuntu:
+    
+    cd llms 
+    python3 Filtro_telegram.py
+    python3 Lstm.py  
+
+
+### Passo 11: Conectar ao Wi-Fi e Acessar a Interface Web
 Certifique-se de que o seu computador/celular e a ESP estejam conectados na mesma rede Wi-Fi.
 
 Acompanhe pelo Serial Monitor o endereço IP atribuído à placa (exemplo: 192.168.1.15).

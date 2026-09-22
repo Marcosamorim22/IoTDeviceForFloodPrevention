@@ -6,11 +6,12 @@ import {
 import mqtt from "mqtt";
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import { supabase } from "./supabaseCliente"; // NOVO: cliente Supabase
 
 // ─── Configuração ──────────────────────────────────────────────────────────────
 const TOPIC = "sensor/rua/medicao";
 const TOPIC_PREVISAO = "sensor/rua/previsao"; // NOVO: tópico das previsões do LSTM
-const MAX_HISTORY = 40;
+const MAX_HISTORY = 400;
 
 const MQTT_CONFIG = {
   broker: "329132687fb349a09107e68a8fd32f5c.s1.eu.hivemq.cloud",
@@ -141,6 +142,50 @@ export default function FloodStreetDashboard() {
 
   const clientRef = useRef(null);
 
+  // ─── NOVO: carrega o estado inicial (última leitura + histórico) do Supabase ──
+  // Isso preenche o gráfico e os cards assim que a página carrega, antes mesmo
+  // da primeira mensagem MQTT chegar. Depois disso, o MQTT assume o tempo real.
+  useEffect(() => {
+    async function carregarEstadoInicial() {
+      const { data: leituras, error } = await supabase
+        .from("leituras")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(MAX_HISTORY);
+
+      if (error) {
+        console.error("Erro ao carregar histórico do Supabase:", error);
+        return;
+      }
+      if (!leituras || leituras.length === 0) return;
+
+      // Supabase devolve do mais recente pro mais antigo — inverte para ordem cronológica
+      const cronologico = [...leituras].reverse();
+
+      const historicoInicial = cronologico.map((l) => ({
+        time: new Date(l.created_at).toLocaleTimeString("pt-BR"),
+        cm: parseFloat(Number(l.nivel_agua).toFixed(1)),
+      }));
+
+      const ultima = cronologico[cronologico.length - 1];
+      const cmUltima = parseFloat(Number(ultima.nivel_agua).toFixed(1));
+      const velUltima =
+        ultima.velocidade !== undefined && ultima.velocidade !== null
+          ? parseFloat(Number(ultima.velocidade).toFixed(1))
+          : 0;
+
+      setHistory(historicoInicial);
+      setData({
+        cm: cmUltima,
+        vel: velUltima,
+        time: new Date(ultima.created_at).toLocaleTimeString("pt-BR"),
+      });
+      setPicoMax(Math.max(...historicoInicial.map((h) => h.cm)));
+    }
+
+    carregarEstadoInicial();
+  }, []);
+
   const connect = useCallback(() => {
     const url = `wss://${MQTT_CONFIG.broker}:${MQTT_CONFIG.port}/mqtt`;
     setConnState("connecting");
@@ -171,6 +216,15 @@ export default function FloodStreetDashboard() {
           setPicoMax((prev) => (prev === null || cm > prev ? cm : prev));
           setHistory((prev) => [...prev, { time, cm: parseFloat(cm.toFixed(1)) }].slice(-MAX_HISTORY));
 
+          // NOVO: grava a leitura no Supabase, pra ficar disponível na próxima
+          // vez que a página abrir — mesmo sem ninguém conectado ao MQTT.
+          supabase
+            .from("leituras")
+            .insert({ nivel_agua: cm, velocidade: vel })
+            .then(({ error }) => {
+              if (error) console.error("Erro ao gravar leitura no Supabase:", error);
+            });
+
         } else if (topic === TOPIC_PREVISAO) {
           // NOVO: trata mensagens de previsão do LSTM
           const time = new Date().toLocaleTimeString("pt-BR");
@@ -196,6 +250,7 @@ export default function FloodStreetDashboard() {
 
   useEffect(() => {
     connect();
+    
     return () => clientRef.current?.end(true);
   }, [connect]);
 
@@ -215,8 +270,15 @@ export default function FloodStreetDashboard() {
       : null;
 
   const sensoresMapa = [
-    { id: 1, nome: "Estacionamento Centro de informática", lat: -8.056028766713343, lng: -34.9511884923378, cm: data?.cm ?? 0, live: true },
-  ];
+  { 
+    id: 1, 
+    nome: "Estacionamento Centro de informática", 
+    lat: -8.056028766713343, 
+    lng: -34.9511884923378, 
+    cm: data?.cm ?? (history.length > 0 ? history[history.length - 1].cm : 0), 
+    live: true 
+  },
+];
 
   return (
     <div style={S.root}>
